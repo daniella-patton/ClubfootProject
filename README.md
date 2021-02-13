@@ -52,8 +52,19 @@ Proposed workflow:
 
 <!-- PREREQUISITES -->
 ## Prerequisites
+* Pandas 1.1.3
+* Matplotlib 3.3.2
+* Torch 1.7.1
+* Numpy 1.19.2
+* SimpleITK 2.0.2
+* PIL 8.0.1
+* Torchvision 0.8.2
+* Scipy 1.5.2
+* Cv2 4.0.1
 
-This section will list the major frameworks the project was written with as well as the packages/versions used. 
+Additional Packages:
+os, time, copy, gc, random, glob
+
 
 
 <!-- ROADMAP -->
@@ -95,7 +106,8 @@ Project Link: [https://github.research.chop.edu/pattondm/Clubfoot-Project](https
 
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
-* Need to list everyone that contributed to this project...
+Tehcnical expertise was provided by Dr. Michael Francavilla, Dr. Susan Sotardi, Dr. Adarsh Ghosh, Dr. Minhhui, and Dr. Hao Huang
+Clinical epertise was provided by Dr. Raymond Sze and Dr. Jie Nguyan
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
