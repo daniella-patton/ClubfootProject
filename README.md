@@ -106,8 +106,8 @@ Project Link: [https://github.research.chop.edu/pattondm/Clubfoot-Project](https
 
 <!-- ACKNOWLEDGEMENTS -->
 ## Acknowledgements
-Tehcnical expertise was provided by Dr. Michael Francavilla, Dr. Susan Sotardi, Dr. Adarsh Ghosh, Dr. Minhhui, and Dr. Hao Huang
-Clinical epertise was provided by Dr. Raymond Sze and Dr. Jie Nguyan
+Tehcnical expertise was provided by Dr. Michael Francavilla, Dr. Susan Sotardi, Dr. Adarsh Ghosh, Dr. Minhhui Ouyang, and Dr. Hao Huang
+Clinical epertise was provided by Dr. Raymond Sze and Dr. Jie Nguyen
 
 
 <!-- MARKDOWN LINKS & IMAGES -->
