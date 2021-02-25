@@ -13,10 +13,16 @@ import SimpleITK as sitk
 import numpy as np
 import torch
 from torch.nn import BCELoss
-from clubfoot_transforms import ClaheFilter, toTensorMask2, Resize_Imgs
-from clubfoot_transforms import Normalize, RandomRotate, RandomFlip, toTensorMask
+#from clubfoot_transforms import ClaheFilter, toTensorMask2, Resize_Imgs
+#from clubfoot_transforms import Normalize, RandomRotate, RandomFlip, toTensorMask
+#from bone_transformations import *
+
+from Transforms_DL1 import toTensorMask, Resize_Imgs, Normalize
+from Transforms_DL1 import RandomRotate, RandomFlip, ClaheFilter
+
 from loss_functions import DC_loss2
 from models import FCNmodel_2pool, FCNmodel_3pool
+#import segmentation_models_pytorch as smp
 
 # Creating Key functions
 def ground_truth_files(base_dir, clubfoot_type):
@@ -266,18 +272,20 @@ def return_criterions(criterionn, augments, model_num):
         criterion2 = None
         
     if augments == 'Clahe_Aug':
-        transformations = [ClaheFilter(),
-                   toTensorMask2(),
+        transformations = [toTensorMask(),
                    Resize_Imgs([272, 256]),
                    Normalize(), 
                    RandomRotate(0.5),
-                   RandomFlip(0.5)] 
+                   RandomFlip(0.5),
+                   ClaheFilter()] 
+    
     if augments == 'Aug':
         transformations = [toTensorMask(),
                    Resize_Imgs([272, 256]),
                    Normalize(), 
                    RandomRotate(0.5),
                    RandomFlip(0.5)]
+    
     if augments == 'No_Aug':
         transformations = [toTensorMask(),
                    Resize_Imgs([272, 256]),

@@ -7,16 +7,162 @@ Date: 02/11/2021
 
 import numpy as np#import opencv
 import random
-from PIL import Image
-from scipy import ndimage
 import torchvision.transforms.functional as TF
 from torchvision import transforms
 import torch
-import cv2
+from skimage import exposure
 
-##############################################################################
-# Custom Augmentations for Bone Background Mask
-##############################################################################
+#from PIL import Image
+#import cv2
+#from scipy import ndimage
+
+class toTensor():
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        orig = mask.shape[0]
+        preprocess = transforms.Compose([transforms.ToTensor()])
+        image = preprocess(image)
+        mask = preprocess(mask) 
+
+        if orig > 2:
+            mask = mask.permute(1, 2, 0)
+            
+        return {'image': image, 'mask' : mask}
+
+class LargeSizeCrop(object):
+    """ Greyscale input image"""
+    def __init__(self, factor):
+        assert isinstance(factor, int)
+        self.factor = factor
+    
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        h, w = image.shape[1:3]
+        down_sized = self.factor
+        if h >=w:
+            new_w = round((down_sized * w)/h)
+            new_h = down_sized
+        else:
+            new_h = round((down_sized * h)/w)
+            new_w = down_sized
+            
+        
+        image = TF.resize(image.unsqueeze(0), size = [new_h, new_w])
+        mask = TF.resize(mask.unsqueeze(0), size = [new_h, new_w])
+          
+        return {'image': image.squeeze(0), 'mask' : mask.squeeze(0)}
+
+class combinedPad():
+    """ Greyscale input image"""
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        h, w = image.shape[1:3]
+        if h >= w:
+            base = h
+            h_pad = 0
+            w_pad = round((h - w)/2)
+        else:
+            base = w
+            h_pad = round((w - h)/2)
+            w_pad = 0
+            
+        image = TF.pad(image, padding = [w_pad, h_pad])
+        mask = TF.pad(mask, padding = [w_pad, h_pad])
+        
+        image = TF.resize(image.unsqueeze(0), size = [base, base])
+        mask = TF.resize(mask.unsqueeze(0), size = [base, base])
+    
+        return {'image': image.squeeze(0), 'mask' : mask.squeeze(0)}    
+
+class Normalize(object):
+    """ Greyscale input image"""
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        m, s = image.mean(), image.std()
+        epsilon = 1e-7
+        preprocess = transforms.Compose([transforms.Normalize(mean= m, std= (s + epsilon))])
+        image = preprocess(image)
+        return {'image': image, 'mask' : mask}
+
+
+class RandomNoise(object):
+    def __init__(self, probability):
+        assert isinstance(probability, float)
+        self.probability = probability
+    
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        prob = self.probability
+        num = int(1/prob)       
+        randomnoise_counter = random.randint(0, num)
+        if randomnoise_counter == 0:
+            s = (image.std().item())/2
+            mask_edit = torch.FloatTensor(image.size()).uniform_(-s, s)
+            image = image + mask_edit
+            # Rescale Image to be in the range of 0 - 1
+            slope = 1/(image.max().item() - image.min().item())
+            image = (image - image.min().item()) * slope
+        return {'image': image, 'mask' : mask}
+    
+class RandomRotate(object):
+    def __init__(self, probability):
+        assert isinstance(probability, float)
+        self.probability = probability
+    
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        prob = self.probability
+        num = int(1/prob)
+        
+        angle_counter = random.randint(0, num)
+        if angle_counter == 0:
+            angle = random.randint(0, 360)
+            image = TF.rotate(image.unsqueeze(0), angle)
+            mask = TF.rotate(mask.unsqueeze(0), angle)
+            image, mask = image.squeeze(0), mask.squeeze(0)
+
+        
+        return {'image': image, 'mask' : mask}
+    
+class RandomFlip(object):
+    def __init__(self, probability):
+        assert isinstance(probability, float)
+        self.probability = probability
+    
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        prob = self.probability
+        num = int(1/prob)
+        
+        flip_counter = random.randint(0, num)
+        if flip_counter == 0:
+            preprocess = transforms.Compose([transforms.RandomHorizontalFlip(p=1)])
+            image = preprocess(image)
+            mask = preprocess(mask)
+            
+        return {'image': image, 'mask' : mask}
+        
+        
+class RandomZoom(object):
+    def __init__(self, probability):
+        assert isinstance(probability, float)
+        self.probability = probability
+    
+    def __call__(self, sample):
+        image, mask = sample['image'], sample['mask']
+        prob = self.probability
+        num = int(1/prob)
+        
+        zoom_counter = random.randint(0, num)
+        if zoom_counter == 0:
+            scale_val = round(random.uniform(0.70, 1.5), 2)
+            image = TF.affine(image, scale = scale_val, angle = 0,
+                              translate = [0,0], shear = [0,0])
+            mask = TF.affine(mask, scale = scale_val, angle = 0,
+                              translate = [0,0], shear = [0,0])
+            
+        return {'image': image, 'mask' : mask}
+    
 
 class ClaheFilter():
     def __call__(self, sample):
@@ -28,16 +174,25 @@ class ClaheFilter():
         image_2 = np.subtract(image_2, image_2.min()) * slope
         image = image_2
         
-        #print(image[0,].astype(dtype = 'uint16').min(), image[0,].astype(dtype = 'uint16').max())
-        image = image_2.astype('uint16')
-        #else: 
-        #image = image[0,].astype('uint16')
-        #print(image.shape)    
-        # create a CLAHE object (Arguments are optional).
-        clahe = cv2.createCLAHE(clipLimit = 0.1, tileGridSize=(25,25))
-        image = clahe.apply(image[0,])
-        return {'image': image.astype('float32'), 'mask' : mask}
+        
+                # Preprcossing - Change the min, max value of the input image from 0-1 
+        nifti_arr_2 = image.copy()
+        slope = 1/(nifti_arr_2.max() - nifti_arr_2.min())
+        nifti_arr_2_norm = np.subtract(nifti_arr_2, nifti_arr_2.min()) * slope
+        
+        # Preprocessing - Apply the CLAHE algorithm 
+        nifti_arr = exposure.equalize_adapthist(nifti_arr_2_norm[0,], 
+                                                kernel_size=(25,25),
+                                                clip_limit=0.01,
+                                                nbins=256)
+        
+        return {'image': nifti_arr.astype('float32'), 'mask' : mask}
     
+
+
+
+'''    
+
 class toTensorMask2():
     def __call__(self, sample):
         image, mask = sample['image'], sample['mask']
@@ -87,191 +242,10 @@ class Resize_Imgs(object):
           
         return {'image': image.squeeze(0), 'mask' : mask.squeeze(0)}
 
-class Normalize(object):
-    """ Greyscale input image"""
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        m, s = image.mean(), image.std()
-        epsilon = 1e-7
-        preprocess = transforms.Compose([transforms.Normalize(mean= m, std= (s + epsilon))])
-        image = preprocess(image)
-        return {'image': image, 'mask' : mask}
-    
-class RandomRotate(object):
-    def __init__(self, probability):
-        assert isinstance(probability, float)
-        self.probability = probability
-    
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        #print(image.dtype, mask.dtype)
-        #print(image.shape, mask.shape)
-        prob = self.probability
-        num = int(1/prob)
-        
-        angle_counter = random.randint(0, num)
-        if angle_counter == 0:
-            angle = random.randint(0, 360)
-            image = TF.rotate(image.unsqueeze(0), angle)
-            mask = TF.rotate(mask.unsqueeze(0), angle)
-            image, mask = image.squeeze(0), mask.squeeze(0)
-            #print(image.dtype, mask.dtype)
-            #print(image.shape, mask.shape)
-        
-        return {'image': image, 'mask' : mask}
-    
-    
-class RandomFlip(object):
-    def __init__(self, probability):
-        assert isinstance(probability, float)
-        self.probability = probability
-    
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        prob = self.probability
-        num = int(1/prob)
-        
-        flip_counter = random.randint(0, num)
-        if flip_counter == 0:
-            preprocess = transforms.Compose([transforms.RandomHorizontalFlip(p=1)])
-            image = preprocess(image)
-            mask = preprocess(mask)
-            
-        return {'image': image, 'mask' : mask}
-        
-        
-class RandomZoom(object):
-    def __init__(self, probability):
-        assert isinstance(probability, float)
-        self.probability = probability
-    
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        prob = self.probability
-        num = int(1/prob)
-        
-        zoom_counter = random.randint(0, num)
-        if zoom_counter == 0:
-            scale_val = round(random.uniform(0.70, 1.5), 2)
-            image = TF.affine(image, scale = scale_val, angle = 0,
-                              translate = [0,0], shear = [0,0])
-            mask = TF.affine(mask, scale = scale_val, angle = 0,
-                              translate = [0,0], shear = [0,0])
-            
-        return {'image': image, 'mask' : mask}
-    
-    
-        
-class RandomNoise(object):
-    def __init__(self, probability):
-        assert isinstance(probability, float)
-        self.probability = probability
-    
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        prob = self.probability
-        num = int(1/prob)       
-        randomnoise_counter = random.randint(0, num)
-        if randomnoise_counter == 0:
-            #torch_fill = torch.zeros(image.size())
-            min_val = torch.min(image).item()
-            num_1 = random.randint(0, 256)
-            num_2 = 0
-            while num_1 > num_2:
-                num_2 = random.randint(0, 256)
-            sd = random.uniform(0, 1)
-            mask_edit = torch.zeros(image.size())
-            # Axis 0 = x axis
-            #axis0 = np.sum(image, axis=0)
-            val = []
-            for j in range(0, 256):
-                if image[0,0,j] != min_val:
-                    val.append(j)
-            if len(val) <2:
-                min_val = 0
-                max_val = 256
-            else:
-                min_val = val[0]
-                max_val = val[-1]
-            for i in range(num_1, num_2):
-                for j in range(min_val, max_val):
-                    mask_edit[0, i, j] = sd
-            image = image + mask_edit
-        return {'image': image, 'mask' : mask}
-    
-    
 
-    
 ##############################################################################
 # Custom Augmentations for Bone Regions Mask
 ##############################################################################
-
-class toTensor():
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        orig = mask.shape[0]
-        preprocess = transforms.Compose([transforms.ToTensor()])
-        image = preprocess(image)
-        mask = preprocess(mask)
-        
-
-        if orig > 2:
-            mask = mask.permute(1, 2, 0)
-            
-        return {'image': image, 'mask' : mask}
-
-
-class LargeSizeCrop(object):
-    """ Greyscale input image"""
-    def __init__(self, factor):
-        assert isinstance(factor, int)
-        self.factor = factor
-    
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        h, w = image.shape[1:3]
-        down_sized = self.factor
-        if h >=w:
-            new_w = round((down_sized * w)/h)
-            new_h = down_sized
-        else:
-            new_h = round((down_sized * h)/w)
-            new_w = down_sized
-            
-        
-        image = TF.resize(image.unsqueeze(0), size = [new_h, new_w])
-        mask = TF.resize(mask.unsqueeze(0), size = [new_h, new_w])
-          
-        return {'image': image.squeeze(0), 'mask' : mask.squeeze(0)}
-    
-    
-class combinedPad():
-    """ Greyscale input image"""
-    def __call__(self, sample):
-        image, mask = sample['image'], sample['mask']
-        h, w = image.shape[1:3]
-        if h >= w:
-            base = h
-            h_pad = 0
-            w_pad = round((h - w)/2)
-        else:
-            base = w
-            h_pad = round((w - h)/2)
-            w_pad = 0
-            
-        image = TF.pad(image, padding = [w_pad, h_pad])
-        mask = TF.pad(mask, padding = [w_pad, h_pad])
-        
-        image = TF.resize(image.unsqueeze(0), size = [base, base])
-        mask = TF.resize(mask.unsqueeze(0), size = [base, base])
-    
-        return {'image': image.squeeze(0), 'mask' : mask.squeeze(0)}    
-        
-
-
-
-
-
 
 class Resize_CenterCrop(object):
     """ Greyscale input image"""
@@ -465,5 +439,6 @@ class ImgAugTransform:
             mask = np.array(mask)
             mask = mask.astype(np.int64, casting='same_kind')
 
-
         return {'image': image, 'mask' : mask}#
+    
+'''
